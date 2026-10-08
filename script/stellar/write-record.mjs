@@ -129,7 +129,14 @@ const deployment = {
   timelockDelay: Number(need("HYPERION_TIMELOCK_DELAY")),
   wasmHashes,
   deployedAt: {
-    ledger: await latestLedger(),
+    ledger:
+      process.env.HYPERION_ROUTER_LEDGER || process.env.ROUTER_LEDGER || process.env.STELLAR_START_LEDGER
+        ? Number(
+            process.env.HYPERION_ROUTER_LEDGER ||
+              process.env.ROUTER_LEDGER ||
+              process.env.STELLAR_START_LEDGER,
+          )
+        : await latestLedger(),
     timestamp: new Date().toISOString(),
   },
   commit: commit(),

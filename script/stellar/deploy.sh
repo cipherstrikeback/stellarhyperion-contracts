@@ -83,17 +83,32 @@ say "router           $ROUTER"
 # straight to a cold key would mean every queued action below needs that key to sign, in a script,
 # which it cannot do. The deployer queues and executes, and the last queued action hands over.
 note "initializing the router"
+ROUTER_LEDGER=""
 if is_initialized "$ROUTER"; then
   say "already initialized, leaving it alone"
 else
-invoke "$ROUTER" initialize \
+INIT_OUT=$(invoke "$ROUTER" initialize \
   --admin "$DEPLOYER" \
   --guardian "$GUARDIAN" \
   --treasury "$TREASURY" \
   --fee_bps "$FEE_BPS" \
   --flow_window_ledgers "$FLOW_WINDOW" \
-  --timelock_delay "$TIMELOCK" >/dev/null || die "router initialize"
+  --timelock_delay "$TIMELOCK" 2>&1) || die "router initialize"
 say "done"
+ROUTER_LEDGER=$(node -e '
+const out = process.argv[1] || "";
+try {
+  const j = JSON.parse(out);
+  if (typeof j.ledger === "number") { process.stdout.write(String(j.ledger)); process.exit(0); }
+  if (typeof j.latestLedger === "number") { process.stdout.write(String(j.latestLedger)); process.exit(0); }
+  if (j.result && typeof j.result.ledger === "number") { process.stdout.write(String(j.result.ledger)); process.exit(0); }
+} catch {}
+const m = out.match(/"ledger"\s*:\s*(\d+)/i) ||
+          out.match(/ledger(?:\s+sequence)?[:\s]+(\d+)/i) ||
+          out.match(/in ledger\s+(\d+)/i);
+if (m) process.stdout.write(m[1]);
+' "$INIT_OUT")
+[ -z "$ROUTER_LEDGER" ] || say "router ledger    $ROUTER_LEDGER"
 fi
 
 # ---------------------------------------------------------------------------------------------
@@ -260,7 +275,7 @@ fi
 
 note "writing the record"
 mkdir -p "$RECORD_DIR"
-LEDGER=$(read_only "$ROUTER" last_out_nonce >/dev/null 2>&1 && echo "" || echo "")
+ROUTER_LEDGER="${ROUTER_LEDGER:-${STELLAR_START_LEDGER:-${HYPERION_ROUTER_LEDGER:-}}}"
 RECORD="$RECORD_DIR/stellar-$NETWORK-phase1.json"
 
 IDS_JSON=$(printf '%s\n' "${QUEUE_IDS[@]}" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.stringify(s.trim().split("\n").filter(Boolean).map(Number))))')
@@ -268,6 +283,7 @@ WHAT_JSON=$(printf '%s\n' "${QUEUE_WHAT[@]}" | node -e 'let s="";process.stdin.o
 
 STELLAR_NETWORK="$NETWORK" \
 HYPERION_ROUTER="$ROUTER" \
+HYPERION_ROUTER_LEDGER="$ROUTER_LEDGER" \
 HYPERION_CCTP="$CCTP" \
 HYPERION_AXELAR="$AXELAR" \
 HYPERION_SAC="$SAC" \
